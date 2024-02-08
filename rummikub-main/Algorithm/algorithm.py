@@ -438,10 +438,12 @@ class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
+        self.discount_factor = 0.95 
         self.model = self._build_model()
         self.epsilon = 1.0  # High initial exploration rate
         self.epsilon_min = 0.01  # Minimum value of epsilon
         self.epsilon_decay = 0.995  # Decay rate
+        self.action_index_map = self.create_action_index_map()
 
     def _build_model(self):
         # Build a neural network model
@@ -506,40 +508,56 @@ class DQNAgent:
         return "draw"
 
     def learn(self, state, action, reward, next_state, done):
+        # Convert the action to an integer index
+        action_index = self.action_to_index(action)
+
         # Convert state and next_state for neural network
         flat_state = np.array(state).flatten().reshape([1, self.state_size])
         flat_next_state = np.array(next_state).flatten().reshape([1, self.state_size])
 
-        # Convert the complex action back to its index
-        action_index = self.action_to_index(action)
-
         # Calculate target value
         target = reward
         if not done:
-            target += 0.95 * np.amax(self.model.predict(flat_next_state)[0])  # discount factor
+            target += self.discount_factor * np.amax(self.model.predict(flat_next_state)[0])
 
         # Update the target for the action taken
         target_f = self.model.predict(flat_state)
-        target_f[0][action_index] = target
+        target_f[0][action_index] = target  # Use action_index here
 
         # Train the model
         self.model.fit(flat_state, target_f, epochs=1, verbose=0)
 
     def action_to_index(self, action):
-        # Convert the action (which might be a list) to a tuple for hashing
-        action_tuple = tuple(action) if isinstance(action, list) else action
-
-        # Mapping of actions to indices
-        # Ensure keys are tuples or other immutable types
-        action_index_map = {
-            "draw": 0,
-            (Tile(1, 'Red'), Tile(2, 'Red')): 1,
-            (Tile(3, 'Blue'), Tile(4, 'Blue')): 2,
-            # ... other mappings
-        }
+        # Convert the action (which might be a list of Tile objects) to a hashable type
+        if isinstance(action, list):
+            action_tuple = tuple((tile.number, tile.color) for tile in action)
+        else:
+            action_tuple = action  # For non-list actions like 'draw'
 
         # Find the action in the map and return its index
-        return action_index_map.get(action_tuple, -1)  # Return -1 or some default value for unknown actions
+        return self.action_index_map.get(action_tuple, -1)  # Return -1 for unknown actions
+
+    def create_action_index_map(self):
+        action_index_map = {}
+        index = 1  # Starting index for tile actions
+
+        colors = ['Red', 'Blue', 'Yellow', 'Black']
+        numbers = range(1, 14)
+
+        # Generate all possible groups (same number, different colors)
+        for number in numbers:
+            for color_combination in itertools.combinations(colors, 3):
+                action_index_map[tuple((number, color) for color in color_combination)] = index
+                index += 1
+
+        # Generate all possible runs (consecutive numbers, same color)
+        for color in colors:
+            for start in range(1, 12):  # Up to 12 to allow a run of 3 tiles
+                run = tuple((num, color) for num in range(start, start + 3))
+                action_index_map[run] = index
+                index += 1
+
+        return action_index_map
 
 # Initialize environment and agent
 env = RummikubEnvironment()
@@ -554,6 +572,7 @@ MAX_STEPS_PER_EPISODE = 500
 # training loop
 for episode in range(NUM_EPISODES):
     state = env.reset()
+    total_reward = 0
     done = False
     steps = 0
 
@@ -562,6 +581,7 @@ for episode in range(NUM_EPISODES):
         next_state, reward, done, _ = env.step(action)
         agent.learn(state, action, reward, next_state, done)
         state = next_state
+        total_reward += reward
         steps += 1
 
         if steps % 100 == 0:  # Log every 100 steps
