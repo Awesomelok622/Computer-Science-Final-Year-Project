@@ -482,11 +482,23 @@ class DQNAgent:
             return self.interpret_draw_action(action_index)
 
     def interpret_tile_action(self, action_index):
-        tile_action_map = {
-            0: [Tile(1, 'Red'), Tile(2, 'Red')],
-            1: [Tile(3, 'Blue'), Tile(4, 'Blue')],
-            # ... other mappings
-        }
+        tile_action_map = {}
+
+        # Individual tile actions
+        colors = ['Red', 'Blue', 'Yellow', 'Black']
+        for color in colors:
+            for number in range(1, 14):
+                index = len(tile_action_map)
+                tile_action_map[index] = [Tile(number, color)]
+
+        # Example group actions (combinations of tiles)
+        # In real game, you might need to consider all valid combinations
+        for number in range(1, 12):  # Groups of 3 tiles
+            for color_set in itertools.combinations(colors, 3):
+                index = len(tile_action_map)
+                group = [Tile(number, color) for color in color_set]
+                tile_action_map[index] = group
+
         return tile_action_map.get(action_index, [])
 
     def interpret_draw_action(self, action_index):
